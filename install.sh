@@ -1128,11 +1128,12 @@ EOF_BBR
         ;;
         
     11)
-        echo -e "\n${blue}=== 🎬 流媒体与 AI 解锁智能检测中心 ===${plain}"
+        while true; do
+        echo -e "\n${blue}=== 🎬 流媒体与 AI 解锁智能检测中心 (原生 + WARP) ===${plain}"
         echo -e "${cyan}📡 正在启动底层网络雷达，侦测代理环境...${plain}"
-        
+
         require_deps curl
-        
+
         proxy_port=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | head -n 1)
         warp_iface=""
         if [[ -z "$proxy_port" ]]; then
@@ -1143,68 +1144,62 @@ EOF_BBR
 
         if [[ -n "$proxy_port" ]]; then
             echo -e "\n${yellow}💡 雷达嗅探到系统正运行 SOCKS5 局部代理 (端口: $proxy_port)${plain}"
-           echo -e "  ${green}1.${plain} 🎯 穿透测试 【代理 IP】 解锁情况 (极客推荐)"
-            echo -e "  ${cyan}2.${plain} 🌍 常规测试 【VPS 原生 IP】 解锁情况"
-            echo -e "  ${yellow}0.${plain} 🔙 放弃测试，返回主菜单"
-            read -p "👉 请选择测速链路 [0-2, 回车默认1]: " test_choice
-            
-            case "${test_choice:-1}" in
-                0) 
-                    echo -e "\n${yellow}已取消测速，正在返回...${plain}"
-                    sleep 0.5
-                    continue 
-                    ;;
-                1) 
-                    echo -e "\n${cyan}🚀 正在拉取测速组件，请耐心等待...${plain}"
-                    ALL_PROXY="socks5h://127.0.0.1:$proxy_port" bash <(curl -x socks5h://127.0.0.1:$proxy_port -sL media.ispvps.com) 
-                    ;;
-                2) 
-                    echo -e "\n${cyan}🚀 正在拉取测速组件，请耐心等待...${plain}"
-                    bash <(curl -sL media.ispvps.com) 
-                    ;;
-                *) 
-                    echo -e "\n${red}❌ 防呆拦截：无效输入！请直接回车或输入 0-2。${plain}"
-                    sleep 1
-                    continue 
-                    ;;
-            esac
-
         elif [[ -n "$warp_iface" ]]; then
             echo -e "\n${yellow}💡 雷达嗅探到系统部署了 WARP 虚拟网卡 ($warp_iface)${plain}"
-            echo -e "  ${green}1.${plain} 🎯 穿透测试 【WARP 虚拟网卡】 解锁情况"
-            echo -e "  ${cyan}2.${plain} 🌍 常规测试 【VPS 原生 IP】 解锁情况"
-            echo -e "  ${yellow}0.${plain} 🔙 放弃测试，返回主菜单"
-            read -p "👉 请选择测速链路 [0-2, 回车默认1]: " test_choice
-            
-            case "${test_choice:-1}" in
-                0) 
-                    echo -e "\n${yellow}已取消测速，正在返回...${plain}"
-                    sleep 0.5
-                    continue 
-                    ;;
-                1) 
-                    echo -e "\n${cyan}🚀 正在拉取测速组件，请耐心等待...${plain}"
-                    bash <(curl -sL media.ispvps.com) -I "$warp_iface" 
-                    ;;
-                2) 
-                    echo -e "\n${cyan}🚀 正在拉取测速组件，请耐心等待...${plain}"
-                    bash <(curl -sL media.ispvps.com) 
-                    ;;
-                *) 
-                    echo -e "\n${red}❌ 防呆拦截：无效输入！请直接回车或输入 0-2。${plain}"
-                    sleep 1
-                    continue 
-                    ;;
-            esac
-            
         else
-            echo -e "\n${green}>>> 未检测到局部代理，正在为您测试当前 VPS 原生 IP 解锁情况...${plain}"
-            echo -e "${cyan}🚀 正在拉取测速组件，请耐心等待...${plain}"
-            bash <(curl -sL media.ispvps.com)
+            echo -e "\n${yellow}>>> 未检测到 WARP，2 号不可用，先测原生。${plain}"
         fi
-        
+
+        echo -e "  ${green}1.${plain} 🌍 常规测试 【VPS 原生 IP】 解锁情况"
+        echo -e "  ${cyan}2.${plain} 🎯 穿透测试 【WARP 出口】 解锁情况"
+        echo -e "  ${yellow}0.${plain} 🔙 放弃测试，返回主菜单"
+        read -p "👉 请选择测速链路 [0-2]: " test_choice
+
+        case "$test_choice" in
+            0)
+                echo -e "\n${yellow}已取消测速，正在返回...${plain}"
+                sleep 0.5
+                break
+                ;;
+            1)
+                echo -e "\n${cyan}🚀 原生 IP 检测，不走 WARP...${plain}"
+                if [[ -x /usr/bin/unlock-test ]]; then
+                    /usr/bin/unlock-test -m 4
+                else
+                    bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -m 4
+                fi
+                ;;
+            2)
+                if [[ -n "$proxy_port" ]]; then
+                    echo -e "\n${cyan}🚀 WARP 出口检测，走 SOCKS5 代理 (端口: $proxy_port)...${plain}"
+                    if [[ -x /usr/bin/unlock-test ]]; then
+                        /usr/bin/unlock-test -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
+                    else
+                        bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
+                    fi
+                elif [[ -n "$warp_iface" ]]; then
+                    echo -e "\n${cyan}🚀 WARP 出口检测，走虚拟网卡 ($warp_iface)...${plain}"
+                    if [[ -x /usr/bin/unlock-test ]]; then
+                        /usr/bin/unlock-test -I "$warp_iface" -m 4
+                    else
+                        bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -I "$warp_iface" -m 4
+                    fi
+                else
+                    echo -e "\n${red}❌ WARP 未开启！请先去 WARP 菜单开启 WARP，再回来测 2 号。${plain}"
+                    read -p "👉 按回车返回检测菜单..."
+                    continue
+                fi
+                ;;
+            *)
+                echo -e "\n${red}❌ 防呆拦截：无效输入！请输入 0、1 或 2。${plain}"
+                sleep 1
+                continue
+                ;;
+        esac
+
         echo -e "\n${yellow}------------------------------------------${plain}"
-        read -p "👉 测试完毕！按【回车键】返回主菜单..."
+        read -p "👉 测试完毕！按【回车键】返回检测菜单..."
+        done
         ;;
         
     12)
