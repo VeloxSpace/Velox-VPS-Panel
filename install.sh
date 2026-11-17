@@ -54,6 +54,25 @@ check_virt_safe() {
 }
 # ====================================================
 
+# ================= 🚀 下载助手：超时 + 失败报错 =================
+fetch_script() {
+    local url="$1"; shift
+    local tmp; tmp=$(mktemp /tmp/velox-fetch.XXXXXX) || return 1
+    if ! curl -fsSL --max-time 15 "$url" -o "$tmp"; then
+        echo -e "${red}❌ 下载失败：$url，请检查网络后重试。${plain}"
+        rm -f "$tmp"; return 1
+    fi
+    if [[ ! -s "$tmp" ]]; then
+        echo -e "${red}❌ 下载为空：$url，请检查网络后重试。${plain}"
+        rm -f "$tmp"; return 1
+    fi
+    bash "$tmp" "$@"
+    local rc=$?
+    rm -f "$tmp"
+    return $rc
+}
+# ====================================================
+
 # ================= 🚀 命令行入参拦截器 (CLI 模式) =================
 if [ "$1" == "restore" ]; then
     echo -e "\n${blue}=== 🛰️ Velox 星际资产恢复程序 ===${plain}"
@@ -1166,7 +1185,7 @@ EOF_BBR
                 if [[ -x /usr/bin/unlock-test ]]; then
                     /usr/bin/unlock-test -m 4
                 else
-                    bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -m 4
+                    fetch_script https://unlock.icmp.ing/scripts/test.sh -m 4
                 fi
                 ;;
             2)
@@ -1175,14 +1194,14 @@ EOF_BBR
                     if [[ -x /usr/bin/unlock-test ]]; then
                         /usr/bin/unlock-test -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
                     else
-                        bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
+                        fetch_script https://unlock.icmp.ing/scripts/test.sh -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
                     fi
                 elif [[ -n "$warp_iface" ]]; then
                     echo -e "\n${cyan}🚀 WARP 出口检测，走虚拟网卡 ($warp_iface)...${plain}"
                     if [[ -x /usr/bin/unlock-test ]]; then
                         /usr/bin/unlock-test -I "$warp_iface" -m 4
                     else
-                        bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -I "$warp_iface" -m 4
+                        fetch_script https://unlock.icmp.ing/scripts/test.sh -I "$warp_iface" -m 4
                     fi
                 else
                     echo -e "\n${red}❌ WARP 未开启！请先去 WARP 菜单开启 WARP，再回来测 2 号。${plain}"
@@ -1272,7 +1291,7 @@ EOF_BBR
                                 return 1
                             fi
                             echo -e "${cyan}⏳ 正在安装 NextTrace...${plain}"
-                            if curl -sL https://nxtrace.org/nt | bash; then
+                            if fetch_script https://nxtrace.org/nt; then
                                 hash -r 2>/dev/null
                                 export PATH="$PATH:/usr/local/bin:/usr/bin"
                                 if command -v nexttrace >/dev/null 2>&1; then
@@ -3357,7 +3376,7 @@ EOF_CERT
             
             UPDATE_URL="https://raw.githubusercontent.com/VeloxSpace/Velox-VPS-Panel/main/install.sh?t=$RANDOM"
             
-            if curl -sL "$UPDATE_URL" -o /tmp/velox_update.sh && grep -q "velox" /tmp/velox_update.sh; then
+            if curl -fsSL --max-time 15 "$UPDATE_URL" -o /tmp/velox_update.sh && [[ -s /tmp/velox_update.sh ]] && grep -q "velox" /tmp/velox_update.sh; then
                 echo -e "${cyan}📦 成功捕获最新版源文件，正在执行热重载...${plain}"
                 
                 # 🛡️ 极客降维打击：强行剔除安装包末尾的自动拉起命令，防止面板无限套娃假死！
