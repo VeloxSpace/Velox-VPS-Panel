@@ -54,10 +54,6 @@ check_virt_safe() {
 }
 # ====================================================
 
-# ================= 🚀 WARP 探测公共函数 =================
-# 只做探测，不改行为：先抓 warp-svc/warp-go 的 SOCKS5 端口，
-# 抓不到再抓 wgcf/warp/wg0 虚拟网卡。结果放全局变量：
-#   DETECTED_PROXY_PORT / DETECTED_WARP_IFACE，抓不到为空，和原来一样。
 detect_warp() {
     DETECTED_PROXY_PORT=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | head -n 1)
     DETECTED_WARP_IFACE=""
@@ -69,13 +65,11 @@ detect_warp() {
 }
 # ====================================================
 
-# ================= 🚀 核心最新版检查（第 4 项，可选） =================
-# 只查 sing-box / xray，5 秒超时，断网就跳过，不卡菜单。
-# 用法：在 6 号菜单印完本地版本后调用一次 check_core_latest
 check_core_latest() {
-    local sb_latest xray_latest
+    local sb_latest xray_latest mh_latest
     sb_latest=$(curl -fsSL --max-time 5 https://api.github.com/repos/SagerNet/sing-box/releases/latest 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
     xray_latest=$(curl -fsSL --max-time 5 https://api.github.com/repos/XTLS/Xray-core/releases/latest 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+    mh_latest=$(curl -fsSL --max-time 5 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
     echo -e "${cyan}--- 🌐 核心最新版 ---${plain}"
     if [[ -n "$sb_latest" ]]; then
         echo -e "  🚀 Sing-box 最新：${green}${sb_latest}${plain}"
@@ -87,10 +81,14 @@ check_core_latest() {
     else
         echo -e "  🛸 Xray 最新：${yellow}网络不可达，跳过${plain}"
     fi
+    if [[ -n "$mh_latest" ]]; then
+        echo -e "  ⚔️ Mihomo 最新：${green}${mh_latest}${plain}"
+    else
+        echo -e "  ⚔️ Mihomo 最新：${yellow}网络不可达，跳过${plain}"
+    fi
 }
 # ====================================================
 
-# ================= 🚀 下载助手：超时 + 失败报错 =================
 fetch_script() {
     local url="$1"; shift
     local tmp; tmp=$(mktemp /tmp/velox-fetch.XXXXXX) || return 1
