@@ -54,6 +54,61 @@ check_virt_safe() {
 }
 # ====================================================
 
+# ================= 🚀 WARP 探测公共函数 =================
+# 只做探测，不改行为：先抓 warp-svc/warp-go 的 SOCKS5 端口，
+# 抓不到再抓 wgcf/warp/wg0 虚拟网卡。结果放全局变量：
+#   DETECTED_PROXY_PORT / DETECTED_WARP_IFACE，抓不到为空，和原来一样。
+detect_warp() {
+    DETECTED_PROXY_PORT=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | head -n 1)
+    DETECTED_WARP_IFACE=""
+    if [[ -z "$DETECTED_PROXY_PORT" ]]; then
+        for iface in wgcf warp wg0; do
+            if ip link show "$iface" >/dev/null 2>&1; then DETECTED_WARP_IFACE="$iface"; break; fi
+        done
+    fi
+}
+# ====================================================
+
+# ================= 🚀 核心最新版检查（第 4 项，可选） =================
+# 只查 sing-box / xray，5 秒超时，断网就跳过，不卡菜单。
+# 用法：在 6 号菜单印完本地版本后调用一次 check_core_latest
+check_core_latest() {
+    local sb_latest xray_latest
+    sb_latest=$(curl -fsSL --max-time 5 https://api.github.com/repos/SagerNet/sing-box/releases/latest 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+    xray_latest=$(curl -fsSL --max-time 5 https://api.github.com/repos/XTLS/Xray-core/releases/latest 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+    echo -e "${cyan}--- 🌐 核心最新版 ---${plain}"
+    if [[ -n "$sb_latest" ]]; then
+        echo -e "  🚀 Sing-box 最新：${green}${sb_latest}${plain}"
+    else
+        echo -e "  🚀 Sing-box 最新：${yellow}网络不可达，跳过${plain}"
+    fi
+    if [[ -n "$xray_latest" ]]; then
+        echo -e "  🛸 Xray 最新：${green}${xray_latest}${plain}"
+    else
+        echo -e "  🛸 Xray 最新：${yellow}网络不可达，跳过${plain}"
+    fi
+}
+# ====================================================
+
+# ================= 🚀 下载助手：超时 + 失败报错 =================
+fetch_script() {
+    local url="$1"; shift
+    local tmp; tmp=$(mktemp /tmp/velox-fetch.XXXXXX) || return 1
+    if ! curl -fsSL --max-time 15 "$url" -o "$tmp"; then
+        echo -e "${red}❌ 下载失败：$url，请检查网络后重试。${plain}"
+        rm -f "$tmp"; return 1
+    fi
+    if [[ ! -s "$tmp" ]]; then
+        echo -e "${red}❌ 下载为空：$url，请检查网络后重试。${plain}"
+        rm -f "$tmp"; return 1
+    fi
+    bash "$tmp" "$@"
+    local rc=$?
+    rm -f "$tmp"
+    return $rc
+}
+# ====================================================
+
 # ================= 🚀 命令行入参拦截器 (CLI 模式) =================
 if [ "$1" == "restore" ]; then
     echo -e "\n${blue}=== 🛰️ Velox 星际资产恢复程序 ===${plain}"
@@ -600,6 +655,7 @@ echo -e "${cyan}=======================================================${plain}"
                 fi
             done
 
+            check_core_latest
             echo -e "\n${cyan}📡 [核心进程监听 TCP/UDP]${plain}"
             ss_out=$(ss -tunlp 2>/dev/null | grep -E 'sing-box|xray|mihomo|clash|cloudflared' || true)
             if [ -n "$ss_out" ]; then
@@ -1134,13 +1190,9 @@ EOF_BBR
 
         require_deps curl
 
-        proxy_port=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | head -n 1)
-        warp_iface=""
-        if [[ -z "$proxy_port" ]]; then
-            for iface in wgcf warp wg0; do
-                if ip link show "$iface" >/dev/null 2>&1; then warp_iface="$iface"; break; fi
-            done
-        fi
+        detect_warp
+        proxy_port="$DETECTED_PROXY_PORT"
+        warp_iface="$DETECTED_WARP_IFACE"
 
         if [[ -n "$proxy_port" ]]; then
             echo -e "\n${yellow}💡 雷达嗅探到系统正运行 SOCKS5 局部代理 (端口: $proxy_port)${plain}"
@@ -1166,7 +1218,7 @@ EOF_BBR
                 if [[ -x /usr/bin/unlock-test ]]; then
                     /usr/bin/unlock-test -m 4
                 else
-                    bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -m 4
+                    fetch_script https://unlock.icmp.ing/scripts/test.sh -m 4
                 fi
                 ;;
             2)
@@ -1175,14 +1227,14 @@ EOF_BBR
                     if [[ -x /usr/bin/unlock-test ]]; then
                         /usr/bin/unlock-test -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
                     else
-                        bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
+                        fetch_script https://unlock.icmp.ing/scripts/test.sh -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
                     fi
                 elif [[ -n "$warp_iface" ]]; then
                     echo -e "\n${cyan}🚀 WARP 出口检测，走虚拟网卡 ($warp_iface)...${plain}"
                     if [[ -x /usr/bin/unlock-test ]]; then
                         /usr/bin/unlock-test -I "$warp_iface" -m 4
                     else
-                        bash <(curl -Ls unlock.icmp.ing/scripts/test.sh) -I "$warp_iface" -m 4
+                        fetch_script https://unlock.icmp.ing/scripts/test.sh -I "$warp_iface" -m 4
                     fi
                 else
                     echo -e "\n${red}❌ WARP 未开启！请先去 WARP 菜单开启 WARP，再回来测 2 号。${plain}"
@@ -1272,7 +1324,7 @@ EOF_BBR
                                 return 1
                             fi
                             echo -e "${cyan}⏳ 正在安装 NextTrace...${plain}"
-                            if curl -sL https://nxtrace.org/nt | bash; then
+                            if fetch_script https://nxtrace.org/nt; then
                                 hash -r 2>/dev/null
                                 export PATH="$PATH:/usr/local/bin:/usr/bin"
                                 if command -v nexttrace >/dev/null 2>&1; then
@@ -3357,7 +3409,7 @@ EOF_CERT
             
             UPDATE_URL="https://raw.githubusercontent.com/VeloxSpace/Velox-VPS-Panel/main/install.sh?t=$RANDOM"
             
-            if curl -sL "$UPDATE_URL" -o /tmp/velox_update.sh && grep -q "velox" /tmp/velox_update.sh; then
+            if curl -fsSL --max-time 15 "$UPDATE_URL" -o /tmp/velox_update.sh && [[ -s /tmp/velox_update.sh ]] && grep -q "velox" /tmp/velox_update.sh; then
                 echo -e "${cyan}📦 成功捕获最新版源文件，正在执行热重载...${plain}"
                 
                 # 🛡️ 极客降维打击：强行剔除安装包末尾的自动拉起命令，防止面板无限套娃假死！
