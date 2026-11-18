@@ -680,7 +680,7 @@ echo -e "${cyan}=======================================================${plain}"
             echo -e "  ${green}5.${plain} 重启 Mihomo"
             echo -e "  ${red}6.${plain} 停止 Mihomo"
             echo -e "  ${green}7.${plain} 重启 Cloudflared/Argo ${yellow}(临时隧道会变URL)${plain}"
-            echo -e "  ${green}8.${plain} 重启 WARP ${yellow}(跑着清内存 / 停了拉起来)${plain}"
+            echo -e "  ${green}8.${plain} 重启 WARP"
             echo -e "  ${yellow}0.${plain} 返回主菜单"
             echo -e "${cyan}------------------------------------------------${plain}"
             read -p "👉 请选择 [0-8]: " core_op
