@@ -680,9 +680,10 @@ echo -e "${cyan}=======================================================${plain}"
             echo -e "  ${green}5.${plain} 重启 Mihomo"
             echo -e "  ${red}6.${plain} 停止 Mihomo"
             echo -e "  ${green}7.${plain} 重启 Cloudflared/Argo ${yellow}(临时隧道会变URL)${plain}"
+            echo -e "  ${green}8.${plain} 重启 WARP ${yellow}(跑着清内存 / 停了拉起来)${plain}"
             echo -e "  ${yellow}0.${plain} 返回主菜单"
             echo -e "${cyan}------------------------------------------------${plain}"
-            read -p "👉 请选择 [0-7]: " core_op
+            read -p "👉 请选择 [0-8]: " core_op
 
             case $core_op in
                 1)
@@ -714,11 +715,25 @@ echo -e "${cyan}=======================================================${plain}"
                     read -p "⚠️ 确认重启 Cloudflared/Argo？(y/n): " conf
                     [[ "${conf,,}" == "y" ]] && do_restart "cloudflared"
                     ;;
+                8)
+                    read -p "⚠️ 确认重启 WARP？(y/n): " conf
+                    if [[ "${conf,,}" == "y" ]]; then
+                        echo -e "${cyan}>>> 正在重启 WARP...${plain}"
+                        systemctl stop warp-go 2>/dev/null; systemctl restart warp-go 2>/dev/null; systemctl restart wg-quick@wgcf 2>/dev/null; systemctl restart warp-svc 2>/dev/null
+                        sleep 2
+                        if systemctl is-active --quiet warp-svc 2>/dev/null || systemctl is-active --quiet warp-go 2>/dev/null || systemctl is-active --quiet wg-quick@wgcf 2>/dev/null; then
+                            echo -e "${green}✅ WARP 已重启${plain}"
+                            send_tg_core "重启" "WARP"
+                        else
+                            echo -e "${red}❌ WARP 重启失败，未检测到运行中的 WARP 服务${plain}"
+                        fi
+                    fi
+                    ;;
                 0) break ;;
                 *) echo -e "${red}无效选择${plain}"; sleep 1 ;;
             esac
 
-            [[ "$core_op" =~ ^[1-7]$ ]] && read -p "👉 按回车继续..."
+            [[ "$core_op" =~ ^[1-8]$ ]] && read -p "👉 按回车继续..."
         done
         ;;
         
@@ -1095,7 +1110,17 @@ EOF_BBR
                         journalctl --vacuum-time=3d >/dev/null 2>&1
                         journalctl --vacuum-size=80M >/dev/null 2>&1
                     fi
-                    echo -e "[${green}日志瘦身完毕 ✅${plain}]"
+                    # 长期上限：写死 SystemMaxUse=80M，日志以后超了自动删旧的，不用再手动清
+                    _jd_conf="/etc/systemd/journald.conf"
+                    if grep -qE '^[#[:space:]]*SystemMaxUse=' "$_jd_conf" 2>/dev/null; then
+                        sed -i -E 's|^[#[:space:]]*SystemMaxUse=.*|SystemMaxUse=80M|' "$_jd_conf"
+                    elif grep -q '^\[Journal\]' "$_jd_conf" 2>/dev/null; then
+                        sed -i '/^\[Journal\]/a SystemMaxUse=80M' "$_jd_conf"
+                    else
+                        printf '\n[Journal]\nSystemMaxUse=80M\n' >> "$_jd_conf"
+                    fi
+                    systemctl restart systemd-journald 2>/dev/null
+                    echo -e "[${green}日志瘦身完毕 ✅（上限 80M 已设）${plain}]"
                     
                     echo -n " 📦  3. 清理 apt/yum 缓存与残余依赖... "
                     if command -v apt-get >/dev/null 2>&1; then
