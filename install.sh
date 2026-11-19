@@ -386,7 +386,7 @@ echo -e "${cyan}=======================================================${plain}"
    
     # --- 第五板块：全域高维容灾与资产审计 ---
     echo -e "\n${blue}[ 板块五：📡 全域高维容灾与资产审计 ]${plain}"
-    echo -e "  ${yellow}20.${plain} ⏱️ ${yellow}时空调度中心 (设定 VPS 半夜自动重启 / 自动刷新 WARP)${plain}"
+    echo -e "  ${yellow}20.${plain} ⏱️ ${yellow}时空调度中心 (设定 VPS 半夜自动重启)${plain}"
     echo -e "  ${yellow}21.${plain} 🔐 ${yellow}Acme 证书管理 (硬核全自动避让 / 到期查询 / 强制续签)${plain}"
     echo -e "  ${yellow}22.${plain} 🧳 ${yellow}模块化资产备份 (精准按需克隆 / 星际舰队 / TG 云端容灾)${plain}"
     echo -e "  ${yellow}23.${plain} 🔍 ${yellow}全域资产雷达 (多维内核级 Socket 嗅探 / 隐藏进程爆破)${plain}"
@@ -1154,8 +1154,8 @@ EOF_BBR
                     ;;
                 2)
                     echo -e "\n${yellow}>>> 正在软性封锁 WARP 释放内存...${plain}"
-                    systemctl stop warp-svc 2>/dev/null && systemctl disable warp-svc 2>/dev/null
-                    pkill -9 warp-svc 2>/dev/null
+                    systemctl stop warp-svc warp-go wg-quick@wgcf 2>/dev/null; systemctl disable warp-svc warp-go wg-quick@wgcf 2>/dev/null
+                    pkill -9 warp-svc 2>/dev/null; pkill -9 warp-go 2>/dev/null
                     sync; echo 3 > /proc/sys/vm/drop_caches
                     echo -e "${green}✅ WARP 进程已被软性击毙，内存当场回血！您的配置未受损。${plain}"
                     read -p "👉 按【回车键】继续..."
@@ -2745,13 +2745,11 @@ EOF_F2B
             echo -e "  ${green}1.${plain} 设置 [每天] 定时整机重启      ${red}11.${plain} 彻底删除 [整机重启] 任务"
             echo -e "  ${green}2.${plain} 设置 [每周] 定时整机重启"
             echo -e "  ${green}3.${plain} 设置 [每月] 定时整机重启"
-            echo -e "\n${cyan}【WARP 链路自动刷新】 (防流媒体/ChatGPT IP 被封锁)${plain}"
-            echo -e "  ${green}4.${plain} 设置 [每天] 定时刷新 WARP     ${red}44.${plain} 彻底删除 [刷新WARP] 任务"
             echo -e "\n${cyan}【综合任务管理】${plain}"
             echo -e "  ${purple}5.${plain} 📜 查看当前已生效的任务雷达图  ${purple}6.${plain} ✍️  手动高级编辑 (极客专属)"
             echo -e " ${red}55.${plain} 💥 一键焦土化清空所有任务     ${yellow}0.${plain} 🔙 返回主菜单"
             echo -e "--------------------------------------------------------"
-            read -p "👉 请输入调度指令 [0-6, 11, 44, 55]: " cron_choice
+            read -p "👉 请输入调度指令 [0-6, 11, 55]: " cron_choice
 
             case $cron_choice in
                 1) 
@@ -2788,21 +2786,6 @@ EOF_F2B
                 11)
                     (crontab -l 2>/dev/null | grep -v "/sbin/reboot") | crontab -
                     echo -e "\n${green}✅ 绝杀成功！已物理抹除 [VPS整机自动重启] 相关的定时任务。${plain}"
-                    ;;
-                4) 
-                    read -p "👉 请输入每天刷新 WARP 的小时(0-23) [回车取消]: " h
-                    if [[ "$h" =~ ^[0-9]+$ && "$h" -ge 0 && "$h" -le 23 ]]; then
-                        # 兼容多版本 WARP 客户端重启，同样加上静默输出
-                        WARP_CMD="systemctl stop warp-go; systemctl restart warp-go; systemctl restart wg-quick@wgcf; systemctl restart warp-svc"
-                        (crontab -l 2>/dev/null | grep -i -v "warp"; echo "0 $h * * * $WARP_CMD >/dev/null 2>&1") | crontab -
-                        echo -e "\n${green}✅ 调度生效！每天北京时间 $h:00 会自动强刷所有 WARP 守护进程换 IP。${plain}"
-                    else
-                        echo -e "\n${yellow}⚠️ 防呆拦截：输入无效或已取消，未执行任何修改。${plain}"
-                    fi
-                    ;;
-                44)
-                    (crontab -l 2>/dev/null | grep -i -v "warp") | crontab -
-                    echo -e "\n${green}✅ 绝杀成功！已物理抹除 [WARP IP 自动刷新] 相关的定时任务。${plain}"
                     ;;
                 5) 
                     echo -e "\n${yellow}👇 核心雷达：当前系统已生效的定时任务列表如下：${plain}"
