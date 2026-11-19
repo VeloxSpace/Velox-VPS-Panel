@@ -680,10 +680,9 @@ echo -e "${cyan}=======================================================${plain}"
             echo -e "  ${green}5.${plain} 重启 Mihomo"
             echo -e "  ${red}6.${plain} 停止 Mihomo"
             echo -e "  ${green}7.${plain} 重启 Cloudflared/Argo ${yellow}(临时隧道会变URL)${plain}"
-            echo -e "  ${green}8.${plain} 重启 WARP"
             echo -e "  ${yellow}0.${plain} 返回主菜单"
             echo -e "${cyan}------------------------------------------------${plain}"
-            read -p "👉 请选择 [0-8]: " core_op
+            read -p "👉 请选择 [0-7]: " core_op
 
             case $core_op in
                 1)
@@ -714,20 +713,6 @@ echo -e "${cyan}=======================================================${plain}"
                     echo -e "${yellow}⚠️ 临时 Argo 隧道重启后 URL 会变化${plain}"
                     read -p "⚠️ 确认重启 Cloudflared/Argo？(y/n): " conf
                     [[ "${conf,,}" == "y" ]] && do_restart "cloudflared"
-                    ;;
-                8)
-                    read -p "⚠️ 确认重启 WARP？(y/n): " conf
-                    if [[ "${conf,,}" == "y" ]]; then
-                        echo -e "${cyan}>>> 正在重启 WARP...${plain}"
-                        systemctl stop warp-go 2>/dev/null; systemctl restart warp-go 2>/dev/null; systemctl restart wg-quick@wgcf 2>/dev/null; systemctl restart warp-svc 2>/dev/null
-                        sleep 2
-                        if systemctl is-active --quiet warp-svc 2>/dev/null || systemctl is-active --quiet warp-go 2>/dev/null || systemctl is-active --quiet wg-quick@wgcf 2>/dev/null; then
-                            echo -e "${green}✅ WARP 已重启${plain}"
-                            send_tg_core "重启" "WARP"
-                        else
-                            echo -e "${red}❌ WARP 重启失败，未检测到运行中的 WARP 服务${plain}"
-                        fi
-                    fi
                     ;;
                 0) break ;;
                 *) echo -e "${red}无效选择${plain}"; sleep 1 ;;
