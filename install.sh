@@ -1090,22 +1090,22 @@ EOF_BBR
                     $PKG_REMOVE fwupd >/dev/null 2>&1
                     echo -e "[${green}物理清理完毕 ✅${plain}]"
                     
-                    echo -n " 📝  2. 焦土化清理 Systemd 历史日志 (保留近 3 天 / 上限 80M)... "
+                    echo -n " 📝  2. 焦土化清理 Systemd 历史日志 (保留近 3 天 / 上限 200M)... "
                     if command -v journalctl >/dev/null 2>&1; then
                         journalctl --vacuum-time=3d >/dev/null 2>&1
-                        journalctl --vacuum-size=80M >/dev/null 2>&1
+                        journalctl --vacuum-size=200M >/dev/null 2>&1
                     fi
-                    # 长期上限：写死 SystemMaxUse=80M，日志以后超了自动删旧的，不用再手动清
+                    # 长期上限：写死 SystemMaxUse=200M，日志以后超了自动删旧的，不用再手动清
                     _jd_conf="/etc/systemd/journald.conf"
                     if grep -qE '^[#[:space:]]*SystemMaxUse=' "$_jd_conf" 2>/dev/null; then
-                        sed -i -E 's|^[#[:space:]]*SystemMaxUse=.*|SystemMaxUse=80M|' "$_jd_conf"
+                        sed -i -E 's|^[#[:space:]]*SystemMaxUse=.*|SystemMaxUse=200M|' "$_jd_conf"
                     elif grep -q '^\[Journal\]' "$_jd_conf" 2>/dev/null; then
-                        sed -i '/^\[Journal\]/a SystemMaxUse=80M' "$_jd_conf"
+                        sed -i '/^\[Journal\]/a SystemMaxUse=200M' "$_jd_conf"
                     else
-                        printf '\n[Journal]\nSystemMaxUse=80M\n' >> "$_jd_conf"
+                        printf '\n[Journal]\nSystemMaxUse=200M\n' >> "$_jd_conf"
                     fi
                     systemctl restart systemd-journald 2>/dev/null
-                    echo -e "[${green}日志瘦身完毕 ✅（上限 80M 已设）${plain}]"
+                    echo -e "[${green}日志瘦身完毕 ✅（上限 200M 已设）${plain}]"
                     
                     echo -n " 📦  3. 清理 apt/yum 缓存与残余依赖... "
                     if command -v apt-get >/dev/null 2>&1; then
