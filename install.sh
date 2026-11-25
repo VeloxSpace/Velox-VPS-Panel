@@ -1117,6 +1117,12 @@ EOF_BBR
                     else
                         $PKG_CLEAN >/dev/null 2>&1
                     fi
+                    # Snap 缓存与 VS Code 旧版本：不在 apt/yum 管辖内，手动清
+                    rm -rf /var/lib/snapd/cache/* 2>/dev/null
+                    _VS_DIR="/root/.vscode-server/cli/servers"
+                    if [ -d "$_VS_DIR" ]; then
+                        (cd "$_VS_DIR" && ls -1t | tail -n +2 | xargs -I {} rm -rf "{}" 2>/dev/null)
+                    fi
                     echo -e "[${green}包缓存清理完毕 ✅${plain}]"
                     
                     echo -n " ⚡  4. 物理拔管强制释放缓存内存... "
