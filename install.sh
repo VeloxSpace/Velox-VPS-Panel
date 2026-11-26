@@ -1,5 +1,6 @@
 #!/bin/bash
 # 自动生成并运行 Velox 面板 (V6.2.11 全域兼容满血终极版 - 智能嗅探 + 原子防护)
+LOCAL_VERSION="6.2.11"
 
 cat << 'EOF' > /usr/local/bin/velox
 #!/bin/bash 
@@ -56,12 +57,22 @@ check_virt_safe() {
 
 detect_warp() {
     DETECTED_PROXY_PORT=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | head -n 1)
+    # 原生 WARP (vx)：sing-box warp-local-in 固定 127.0.0.1:40000
+    if [[ -z "$DETECTED_PROXY_PORT" ]] && ss -nltp 2>/dev/null | grep -q '127\.0\.0\.1:40000'; then
+        DETECTED_PROXY_PORT="40000"
+    fi
     DETECTED_WARP_IFACE=""
     if [[ -z "$DETECTED_PROXY_PORT" ]]; then
         for iface in wgcf warp wg0; do
             if ip link show "$iface" >/dev/null 2>&1; then DETECTED_WARP_IFACE="$iface"; break; fi
         done
     fi
+}
+# 原生 WARP (vx)：sing-box 内 warp-ep 端口 + warp-local-in (127.0.0.1:40000)，无独立服务
+_native_warp_on() {
+    systemctl is-active --quiet vx-core.service 2>/dev/null || return 1
+    [ -f /etc/vx_vne/config.json ] || return 1
+    grep -q '"warp-ep"' /etc/vx_vne/config.json 2>/dev/null
 }
 # ====================================================
 
@@ -718,7 +729,7 @@ echo -e "${cyan}=======================================================${plain}"
                 *) echo -e "${red}无效选择${plain}"; sleep 1 ;;
             esac
 
-            [[ "$core_op" =~ ^[1-8]$ ]] && read -p "👉 按回车继续..."
+            [[ "$core_op" =~ ^[1-7]$ ]] && read -p "👉 按回车继续..."
         done
         ;;
         
@@ -733,7 +744,7 @@ echo -e "${cyan}=======================================================${plain}"
         proxy_mode=""
         warp_socks_port=""
 
-        if systemctl is-active --quiet warp-go 2>/dev/null || systemctl is-active --quiet wg-quick@wgcf 2>/dev/null || systemctl is-active --quiet warp-svc 2>/dev/null; then
+        if systemctl is-active --quiet warp-go 2>/dev/null || systemctl is-active --quiet wg-quick@wgcf 2>/dev/null || systemctl is-active --quiet warp-svc 2>/dev/null || _native_warp_on; then
             
             # 1. 测全局直连 (加 timeout 防止死锁假死)
             trace=$(timeout 3 curl -s4 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null || echo "error")
@@ -760,6 +771,8 @@ echo -e "${cyan}=======================================================${plain}"
             # 3. 测本地 SOCKS5 代理 (全自动动态抓取，绝不写死端口)
             if [[ "$warp_status" == "off" ]]; then
                 proxy_ports=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | sort -u)
+                # 原生 WARP (vx)：sing-box warp-local-in 固定 127.0.0.1:40000
+                if _native_warp_on; then proxy_ports="$proxy_ports 40000"; fi
                 for port in $proxy_ports; do
                     trace=$(timeout 3 curl -x socks5h://127.0.0.1:$port -s4 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null || echo "error")
                     if echo "$trace" | grep -q "warp=on"; then
@@ -784,6 +797,8 @@ echo -e "${cyan}=======================================================${plain}"
                 if [ -z "$warp_ip4" ] || [ -z "$warp_ip6" ]; then
                     _sp="${warp_socks_port:-}"
                     [ -z "$_sp" ] && _sp=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | head -n1)
+                    # 原生 WARP (vx)：无 warp-svc/warp-go 时用 40000
+                    [ -z "$_sp" ] && _native_warp_on && _sp="40000"
 
                     if [ -n "$_sp" ]; then
                         if [ -z "$warp_ip4" ]; then
@@ -836,7 +851,8 @@ echo -e "${cyan}=======================================================${plain}"
             local cmd
             cmd=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null)
             # 容器内 常用 token-file + /run/secrets
-            if echo "$cmd" | grep -qE -- '--token-file|/run/secrets/cf_tunnel'; then
+            # 仅把容器内 secrets 挂载判为容器探针，放行宿主机 --token-file
+            if echo "$cmd" | grep -qE '/run/secrets/cf_tunnel'; then
                 return 0
             fi
             return 1
@@ -896,6 +912,10 @@ echo -e "${cyan}=======================================================${plain}"
                     masked_token="${argo_token_live:0:6}******[系统级智能打码]******${argo_token_live: -6}"
                     echo -e " 🔗 链路模式 : ${purple}Tunnels Token 守护模式 (节点固定隧道)${plain}"
                     echo -e " 🔑 绑定凭证 : ${cyan}${masked_token}${plain} ${green}✅${plain}"
+                elif { [ -n "$ACTIVE_ARGO_SVC" ] && systemctl cat "$ACTIVE_ARGO_SVC" 2>/dev/null | grep -q -- '--token-file'; } \
+                  || { [ -n "$NODE_ARGO_PIDS" ] && for _p in $NODE_ARGO_PIDS; do tr '\0' ' ' < /proc/$_p/cmdline 2>/dev/null; done | grep -q -- '--token-file'; }; then
+                    echo -e " 🔗 链路模式 : ${purple}Tunnels Token-File 守护模式 (节点固定隧道)${plain}"
+                    echo -e " 🔑 绑定凭证 : ${cyan}[外部凭证文件托管]${plain} ${green}✅${plain}"
                 else
                     # 3) 临时隧道：优先游击队日志，再按「节点服务/节点 PID」关联的近期日志，避免旧 journal 脏 URL
                     argo_url=""
@@ -1174,9 +1194,9 @@ EOF_BBR
                         systemctl stop warp-svc 2>/dev/null; systemctl disable warp-svc 2>/dev/null
                         pkill -9 -f "warp-svc" 2>/dev/null
                         $PKG_REMOVE cloudflare-warp 2>/dev/null
-                        rm -rf /var/lib/cloudflare-warp /etc/cloudflare-warp ~/.local/share/cloudflare-warp
+                        rm -rf /var/lib/cloudflare-warp /etc/cloudflare-warp ~/.local/share/cloudflare-warp \
+                               /etc/apt/sources.list.d/cloudflare-client.list /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg 2>/dev/null
                         if ! ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then echo "nameserver 8.8.8.8" > /etc/resolv.conf; fi
-                        swapoff -a 2>/dev/null && swapon -a 2>/dev/null
                         sync; echo 3 > /proc/sys/vm/drop_caches
                         echo -e "${green}✅ WARP 装甲已被彻底焦土化粉碎！${plain}"
                     else
@@ -1562,9 +1582,8 @@ EOF2
                         cat << 'EOF2' > /usr/local/bin/tg_boot_alert.sh
 #!/bin/bash
 source /etc/velox_tg.conf
-sleep 15
 export TZ="Asia/Shanghai"
-sleep 30  
+sleep 30
 if systemctl is-active --quiet sing-box 2>/dev/null || pgrep -x "sing-box" >/dev/null 2>&1; then SB_STAT="运行中 ✅"; else SB_STAT="未运行/未安装 ⚠️"; fi
 if systemctl is-active --quiet xray 2>/dev/null || pgrep -x "xray" >/dev/null 2>&1 || pgrep -x "aegis-xray" >/dev/null 2>&1 || pgrep -f "[/ ]xray( |$)|aegis-xray|xray-linux" >/dev/null 2>&1; then XR_STAT="运行中 ✅"; else XR_STAT="未运行/未安装 ⚠️"; fi
 ARGO_STAT="未运行/无自启 ⚠️"
@@ -1573,14 +1592,14 @@ if systemctl is-active --quiet cloudflared 2>/dev/null || systemctl is-active --
 else
     for _apid in $(pgrep -x cloudflared 2>/dev/null); do
         if ! grep -qE 'docker|containerd|kubepods|libpod' /proc/$_apid/cgroup 2>/dev/null \
-           && ! tr '\0' ' ' < /proc/$_apid/cmdline 2>/dev/null | grep -qE -- '--token-file|/run/secrets/cf_tunnel'; then
+           && ! tr '\0' ' ' < /proc/$_apid/cmdline 2>/dev/null | grep -qE '/run/secrets/cf_tunnel'; then
             ARGO_STAT="运行中 ✅"
             break
         fi
     done
 fi
 if pgrep -x "mihomo" >/dev/null 2>&1 || pgrep -f "clash-meta" >/dev/null 2>&1; then MH_STAT="运行中 ✅"; elif command -v mihomo >/dev/null 2>&1 || [ -f /usr/local/bin/mihomo ] || [ -f /usr/local/bin/clash-meta ]; then MH_STAT="未运行 ⚠️"; else MH_STAT="未安装 ⚠️"; fi
-if systemctl is-active --quiet warp-go 2>/dev/null || systemctl is-active --quiet wg-quick@wgcf 2>/dev/null || systemctl is-active --quiet warp-svc 2>/dev/null || ip link show wg0 >/dev/null 2>&1 || ip link show warp >/dev/null 2>&1; then WARP_STAT="已就绪 ✅"; else WARP_STAT="未开启/未安装 ⚠️"; fi
+if systemctl is-active --quiet warp-go 2>/dev/null || systemctl is-active --quiet wg-quick@wgcf 2>/dev/null || systemctl is-active --quiet warp-svc 2>/dev/null || ip link show wg0 >/dev/null 2>&1 || ip link show warp >/dev/null 2>&1 || { systemctl is-active --quiet vx-core.service 2>/dev/null && grep -q '"warp-ep"' /etc/vx_vne/config.json 2>/dev/null; }; then WARP_STAT="已就绪 ✅"; else WARP_STAT="未开启/未安装 ⚠️"; fi
 MSG="🟢 <b>[Velox 系统复苏通知]</b>
 Sir，您的服务器 <code>$(hostname)</code> 已完成重启并成功连网！
 📊 <b>【核心体检报告】</b>
@@ -3462,7 +3481,7 @@ EOF_CERT
                 # 1.5 拆除全局 TG 凭证与血洗所有定时任务
                 echo -n "1.5 正在清洗全局 TG 凭证与所有相关定时任务... "
                 rm -f /etc/velox_tg.conf /usr/local/bin/velox_traffic_alert.sh /usr/local/bin/velox_cert_alert.sh
-                crontab -l 2>/dev/null | grep -vE "velox_traffic_alert.sh|velox_pulse_alert.sh|velox_watchdog.sh|velox_cert_alert.sh|warp|reboot" | crontab -
+                crontab -l 2>/dev/null | grep -vE "velox_traffic_alert.sh|velox_pulse_alert.sh|velox_watchdog.sh|velox_cert_alert.sh|/sbin/reboot" | crontab -
                 echo -e "[${green}已彻底清洗${plain}]"
 
                 # 1.6 彻底拔除 vnstat 底层监控与历史流量数据库 (🚀 智改：调用全域卸载装甲)
