@@ -812,6 +812,11 @@ echo -e "${cyan}=======================================================${plain}"
                         if [ -z "$warp_ip6" ]; then
                             t6=$(timeout 3 curl -x socks5h://127.0.0.1:$_sp -s6 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null)
                             warp_ip6=$(echo "$t6" | grep '^ip=' | cut -d= -f2 | head -n1)
+                            # -s6 + 域名经 SOCKS 常拿不到 V6，改走 IPv6 专属端点 api6.ipify.org（vx 同款）
+                            if [ -z "$warp_ip6" ]; then
+                                t6=$(timeout 3 curl -x socks5h://127.0.0.1:$_sp -s https://api6.ipify.org 2>/dev/null | tr -d '\r\n')
+                                [[ "$t6" == *:* ]] && warp_ip6="$t6"
+                            fi
                         fi
                     else
                         if [ -z "$warp_ip4" ]; then
@@ -1180,10 +1185,17 @@ EOF_BBR
                     ;;
                 2)
                     echo -e "\n${yellow}>>> 正在软性封锁 WARP 释放内存...${plain}"
-                    systemctl stop warp-svc warp-go wg-quick@wgcf 2>/dev/null; systemctl disable warp-svc warp-go wg-quick@wgcf 2>/dev/null
-                    pkill -9 warp-svc 2>/dev/null; pkill -9 warp-go 2>/dev/null
-                    sync; echo 3 > /proc/sys/vm/drop_caches
-                    echo -e "${green}✅ WARP 进程已被软性击毙，内存当场回血！您的配置未受损。${plain}"
+                    if _native_warp_on; then
+                        # 原生 WARP (vx)：WARP 在 sing-box 内，无独立服务，重启 vx-core 释放内存
+                        systemctl restart vx-core.service 2>/dev/null
+                        sync; echo 3 > /proc/sys/vm/drop_caches
+                        echo -e "${green}✅ vx-core 已重启，内存当场回血！WARP 与节点配置未受损。${plain}"
+                    else
+                        systemctl stop warp-svc warp-go wg-quick@wgcf 2>/dev/null; systemctl disable warp-svc warp-go wg-quick@wgcf 2>/dev/null
+                        pkill -9 warp-svc 2>/dev/null; pkill -9 warp-go 2>/dev/null
+                        sync; echo 3 > /proc/sys/vm/drop_caches
+                        echo -e "${green}✅ WARP 进程已被软性击毙，内存当场回血！您的配置未受损。${plain}"
+                    fi
                     read -p "👉 按【回车键】继续..."
                     ;;
                 3)
