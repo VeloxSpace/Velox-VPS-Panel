@@ -57,9 +57,9 @@ check_virt_safe() {
 
 detect_warp() {
     DETECTED_PROXY_PORT=$(ss -nltp 2>/dev/null | grep -E 'warp-svc|warp-go' | awk '{print $4}' | grep -E '127\.0\.0\.1|::1' | awk -F':' '{print $NF}' | head -n 1)
-    # 原生 WARP (vx)：sing-box warp-local-in 固定 127.0.0.1:40000
-    if [[ -z "$DETECTED_PROXY_PORT" ]] && ss -nltp 2>/dev/null | grep -q '127\.0\.0\.1:40000'; then
-        DETECTED_PROXY_PORT="40000"
+    # 原生 WARP (vx)：sing-box warp-local-in 固定 127.0.0.1:40000，trace 验真防误判
+    if [[ -z "$DETECTED_PROXY_PORT" ]] && ss -nlt 2>/dev/null | grep -qE '127\.0\.0\.1:40000\b'; then
+        timeout 2 curl -s -x socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -q "warp=on" && DETECTED_PROXY_PORT="40000"
     fi
     DETECTED_WARP_IFACE=""
     if [[ -z "$DETECTED_PROXY_PORT" ]]; then
@@ -828,7 +828,8 @@ echo -e "${cyan}=======================================================${plain}"
                             fi
                         fi
                         if [ -z "$warp_ip6" ]; then
-                            t6=$(timeout 3 curl -s6 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null)
+                            # 虚拟网卡 WARP：须绑网卡测，否则可能拿到 VPS 原生 V6
+                            t6=$(timeout 3 curl --interface "$iface" -s6 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null)
                             warp_ip6=$(echo "$t6" | grep '^ip=' | cut -d= -f2 | head -n1)
                         fi
                     fi
