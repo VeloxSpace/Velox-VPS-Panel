@@ -1095,7 +1095,7 @@ EOF_BBR
             clear
             echo -e "\n${blue}=== 🧹 焦土化清理与系统瘦身中心 ===${plain}"
             echo -e "  ${green}1.${plain} 🧹 深度全域清理 (日志 / apt缓存 / 旧内核 / 冗余进程 / 释放内存)"
-            echo -e "  ${yellow}2.${plain} 🛑 软性封锁 WARP (仅停机休眠，释放180MB内存，不删配置)"
+            echo -e "  ${yellow}2.${plain} 🛑 软性封锁 WARP (仅停机休眠，释放内存，不删配置)"
             echo -e "  ${red}3.${plain} 🗑️ 物理强拆 WARP 装甲 (连根拔起，彻底卸载客户端)"
             echo -e "  ${cyan}0.${plain} 🔙 返回主菜单"
             echo -e "${cyan}---------------------------------------------------${plain}"
@@ -1270,6 +1270,11 @@ EOF_BBR
             2)
                 if [[ -n "$proxy_port" ]]; then
                     echo -e "\n${cyan}🚀 WARP 出口检测，走 SOCKS5 代理 (端口: $proxy_port)...${plain}"
+                    # 工具头 V6 栏会把 V4 抄上去（上游 bug），先印真实出口 IP
+                    _eg4=$(timeout 3 curl -x socks5h://127.0.0.1:$proxy_port -s https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep '^ip=' | cut -d= -f2)
+                    _eg6=$(timeout 3 curl -x socks5h://127.0.0.1:$proxy_port -s https://api6.ipify.org 2>/dev/null | tr -d '\r\n')
+                    [[ -n "$_eg4" ]] && echo -e "${green}出口 IPv4：$_eg4${plain}"
+                    [[ -n "$_eg6" ]] && echo -e "${green}出口 IPv6：$_eg6${plain}"
                     if [[ -x /usr/bin/unlock-test ]]; then
                         /usr/bin/unlock-test -socks-proxy "socks5://127.0.0.1:$proxy_port" -m 4
                     else
